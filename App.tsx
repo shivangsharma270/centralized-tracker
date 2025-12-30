@@ -174,7 +174,6 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight leading-tight">Centralized Tracker: Buyer's Help Team</h1>
-              <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mt-1">Operational Intelligence Dashboard</p>
             </div>
           </div>
 
@@ -414,29 +413,39 @@ const App: React.FC = () => {
       {selectedConcern && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
-            <div className="px-6 sm:px-10 py-6 sm:py-8 bg-[#1a73e8] text-white flex flex-col gap-4 sm:gap-5 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+            {/* COMPACTED HEADER: Smaller padding and adjusted font to prevent overlap */}
+            <div className="px-6 sm:px-10 py-4 sm:py-6 bg-[#1a73e8] text-white flex flex-col gap-3 relative overflow-hidden shrink-0">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-3xl"></div>
               <div className="flex justify-between items-start relative z-10">
-                <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                   <div className="bg-white/20 backdrop-blur-md px-3 sm:px-4 py-1 sm:py-1.5 rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest border border-white/10">
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                   <div className="bg-white/20 backdrop-blur-md px-2.5 py-1 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-widest border border-white/10">
                      ID: {selectedConcern['Ticket Id'] || 'PENDING'}
                    </div>
                    {renderBadge(selectedConcern['Ticket Status'], 'status')}
                 </div>
                 <button 
                   onClick={() => setSelectedConcern(null)} 
-                  className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-2xl transition-all"
+                  className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-xl transition-all"
                 >
-                  <i className="fas fa-times text-lg sm:text-xl"></i>
+                  <i className="fas fa-times text-base sm:text-lg"></i>
                 </button>
               </div>
-              <h3 className="text-xl sm:text-2xl md:text-3xl font-black leading-tight tracking-tight break-words relative z-10">
+              {/* Reduced title font size */}
+              <h3 className="text-lg sm:text-xl md:text-2xl font-black leading-tight tracking-tight break-words relative z-10 pr-10">
                 {selectedConcern['Mail Thread']}
               </h3>
             </div>
+            
             <div className="flex-1 overflow-y-auto p-6 sm:p-10 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10 mb-8 sm:mb-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-8 sm:mb-10">
                 <div className="space-y-6 sm:space-y-8">
+                  <div>
+                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Escalation Type</label>
+                    <div className="p-4 sm:p-5 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-center gap-3 text-[12px] sm:text-[13px] font-black text-blue-900 shadow-sm">
+                      <i className="fas fa-tags text-blue-400"></i>
+                      {selectedConcern.category || "General Escalation"}
+                    </div>
+                  </div>
                   <div>
                     <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Source</label>
                     <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
@@ -445,12 +454,13 @@ const App: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Date Received</label>
-                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[13px] sm:text-sm font-black text-slate-700 shadow-sm">
+                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[12px] sm:text-[13px] font-black text-slate-700 shadow-sm">
                       <i className="fas fa-calendar-check text-[#1a73e8]"></i>
                       {selectedConcern['Acknowledgement Date']}
                     </div>
                   </div>
                 </div>
+                
                 <div className="space-y-6 sm:space-y-8">
                   <div>
                     <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Status</label>
@@ -458,15 +468,23 @@ const App: React.FC = () => {
                       {renderBadge(selectedConcern['Ticket Status'], 'status')}
                     </div>
                   </div>
+                  {/* MODIFIED: Label changed to BS/Activation as requested */}
+                  <div>
+                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">BS/Activation</label>
+                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+                      {renderBadge(selectedConcern['BS/Activation'], 'bs')}
+                    </div>
+                  </div>
                   <div>
                     <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Audit TAT</label>
-                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[13px] sm:text-sm font-black text-slate-700 shadow-sm">
+                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[12px] sm:text-[13px] font-black text-slate-700 shadow-sm">
                       <i className="fas fa-hourglass-start text-[#1a73e8]"></i>
                       {selectedConcern['TAT'] || '0'} Days
                     </div>
                   </div>
                 </div>
               </div>
+              
               <div>
                  <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 sm:mb-4 block">Resolution Insights</label>
                  <div className="p-6 sm:p-8 bg-slate-50 rounded-[1.5rem] sm:rounded-[2.5rem] text-slate-700 font-bold italic leading-relaxed border border-slate-200 shadow-inner">
@@ -478,10 +496,11 @@ const App: React.FC = () => {
                  </div>
               </div>
             </div>
-            <div className="px-6 sm:px-10 py-6 sm:py-8 bg-slate-50 border-t border-slate-200 flex justify-end">
+            
+            <div className="px-6 sm:px-10 py-5 sm:py-6 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
               <button 
                 onClick={() => setSelectedConcern(null)} 
-                className="w-full sm:w-auto bg-slate-900 text-white px-8 sm:px-12 py-3.5 sm:py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] sm:text-[11px] shadow-xl hover:bg-black transition-all hover:scale-105 active:scale-95"
+                className="w-full sm:w-auto bg-slate-900 text-white px-8 sm:px-12 py-3 sm:py-3.5 rounded-xl font-black uppercase tracking-[0.2em] text-[10px] sm:text-[11px] shadow-xl hover:bg-black transition-all hover:scale-105 active:scale-95"
               >
                 Close Audit
               </button>

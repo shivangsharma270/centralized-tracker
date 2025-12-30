@@ -12,7 +12,7 @@ interface ChartsSectionProps {
   setActiveTab: (tab: 'All' | 'Social Media' | 'Board' | 'Other') => void;
 }
 
-const COLORS = ['#1a73e8', '#10b981', '#f59e0b', '#e11d48', '#8b5cf6', '#06b6d4', '#64748b'];
+const COLORS = ['#1a73e8', '#10b981', '#f59e0b', '#e11d48', '#8b5cf6', '#06b6d4', '#64748b', '#fb923c', '#a3e635'];
 
 const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setActiveTab }) => {
   const parseSheetDate = (dateStr: string) => {
@@ -33,6 +33,18 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
       return acc;
     }, {});
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [concerns]);
+
+  const typeData = useMemo(() => {
+    const counts = concerns.reduce((acc: any, c) => {
+      const type = c.category || 'Other';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => (b.value as number) - (a.value as number))
+      .slice(0, 8); // Top 8 types for clarity
   }, [concerns]);
 
   const trendData = useMemo(() => {
@@ -67,23 +79,22 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
   }, [concerns]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
       {/* Trend Chart with Filter Tabs */}
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm col-span-1 lg:col-span-2">
+      <div className="bg-white p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-200 shadow-sm col-span-1 lg:col-span-3">
         <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div>
-            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Intake Analytics</h3>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Intake Analytics</h3>
             <p className="text-xl font-black text-slate-800">Trend Analysis Over Time</p>
           </div>
           
-          {/* Chart-Specific Filter Tabs */}
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner">
+          <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner w-full md:w-auto overflow-x-auto no-scrollbar">
             {(['All', 'Social Media', 'Board', 'Other'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap ${
-                  activeTab === tab ? 'bg-white text-[#1a73e8] shadow-md scale-105' : 'text-slate-500 hover:text-slate-800'
+                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all whitespace-nowrap min-w-max flex-1 md:flex-none ${
+                  activeTab === tab ? 'bg-white text-[#1a73e8] shadow-md' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 {tab}
@@ -92,7 +103,7 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
           </div>
         </div>
         
-        <div className="h-[250px]">
+        <div className="h-[250px] sm:h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={trendData}>
               <defs>
@@ -106,7 +117,7 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
               <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
               <Tooltip 
                 contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px'}}
-                itemStyle={{fontSize: '12px', fontWeight: 'bold'}}
+                itemStyle={{fontSize: '11px', fontWeight: 'bold'}}
               />
               <Area type="monotone" dataKey="count" stroke="#1a73e8" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
             </AreaChart>
@@ -114,19 +125,42 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
         </div>
       </div>
 
-      {/* Smaller Pie & Bar Charts */}
-      <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Escalation Status</h3>
-        <div className="h-[200px]">
+      {/* Distribution by Issue Type */}
+      <div className="bg-white p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Issue Type Volume</h3>
+        <div className="h-[220px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={typeData} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+              <XAxis type="number" hide />
+              <YAxis 
+                dataKey="name" 
+                type="category" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{fill: '#64748b', fontSize: 9, fontWeight: 700}} 
+                width={100}
+              />
+              <Tooltip cursor={{fill: '#f8fafc'}} />
+              <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={12} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Escalation Status Pie Chart */}
+      <div className="bg-white p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Escalation Status</h3>
+        <div className="h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={statusData}
                 cx="50%"
                 cy="50%"
-                innerRadius={50}
-                outerRadius={70}
-                paddingAngle={8}
+                innerRadius={45}
+                outerRadius={65}
+                paddingAngle={6}
                 dataKey="value"
               >
                 {statusData.map((entry, index) => (
@@ -134,22 +168,23 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
                 ))}
               </Pie>
               <Tooltip />
-              <Legend iconType="circle" wrapperStyle={{fontSize: '10px', fontWeight: 'bold'}} />
+              <Legend iconType="circle" wrapperStyle={{fontSize: '9px', fontWeight: 'bold', paddingTop: '10px'}} />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Turnaround Performance</h3>
-        <div className="h-[200px]">
+      {/* Turnaround Performance Bar Chart */}
+      <div className="bg-white p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Audit Ageing (TAT)</h3>
+        <div className="h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={tatData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
               <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
               <Tooltip cursor={{fill: '#f8fafc'}} />
-              <Bar dataKey="count" fill="#1a73e8" radius={[8, 8, 0, 0]} barSize={30} />
+              <Bar dataKey="count" fill="#10b981" radius={[6, 6, 0, 0]} barSize={25} />
             </BarChart>
           </ResponsiveContainer>
         </div>
