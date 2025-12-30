@@ -2,9 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Concern } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export async function generateConcernSummary(concerns: Concern[]) {
+  // Initialize instance inside the function to use the most recent process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
   const dataString = JSON.stringify(concerns.slice(0, 50)); // Limit to first 50 for token management
 
   const response = await ai.models.generateContent({
