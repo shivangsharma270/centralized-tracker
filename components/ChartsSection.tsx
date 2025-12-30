@@ -37,21 +37,22 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
 
   const typeData = useMemo(() => {
     const counts = concerns.reduce((acc: any, c) => {
-      const type = c.category || 'Other';
+      // Use 'Type' column from the sheet instead of 'category'
+      const type = c['Type'] || 'Other';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {});
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => (b.value as number) - (a.value as number))
-      .slice(0, 8); // Top 8 types for clarity
+      .slice(0, 10); // Show top 10 for better visibility
   }, [concerns]);
 
   const trendData = useMemo(() => {
     const dates: any = {};
     concerns.forEach(c => {
       const dateStr = c['Acknowledgement Date'];
-      if (dateStr) {
+      if (dateStr && dateStr !== '-') {
         dates[dateStr] = (dates[dateStr] || 0) + 1;
       }
     });
@@ -70,6 +71,7 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
     ];
     concerns.forEach(c => {
       const tat = parseInt(c['TAT'] || '0');
+      if (isNaN(tat)) return;
       if (tat <= 5) buckets[0].count++;
       else if (tat <= 10) buckets[1].count++;
       else if (tat <= 20) buckets[2].count++;
@@ -139,7 +141,7 @@ const ChartsSection: React.FC<ChartsSectionProps> = ({ concerns, activeTab, setA
                 axisLine={false} 
                 tickLine={false} 
                 tick={{fill: '#64748b', fontSize: 9, fontWeight: 700}} 
-                width={100}
+                width={120}
               />
               <Tooltip cursor={{fill: '#f8fafc'}} />
               <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={12} />

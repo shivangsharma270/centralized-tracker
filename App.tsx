@@ -1,52 +1,88 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchSheetData } from './utils/csvParser';
+import { fetchSheetData, GIDS } from './utils/csvParser';
 import { generateConcernSummary } from './services/geminiService';
-import { Concern, AISummary } from './types';
+import { Concern, ProxyConcern, AISummary } from './types';
 import StatCard from './components/StatCard';
 import ChartsSection from './components/ChartsSection';
+import ProxyDashboard from './components/ProxyDashboard';
 
 type DateRangeType = 'all' | 'today' | '7d' | '30d' | 'this_month' | 'custom';
 type MainTabType = 'SocialMedia' | 'Proxy' | 'Legal' | 'Important';
 
 const App: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('SocialMedia');
-  const [concerns, setConcerns] = useState<Concern[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [lastSynced, setLastSynced] = useState<Date | null>(null);
-  const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState('');
   
-  // Date Filtering State
+  // Strict State Isolation
+  const [socialConcerns, setSocialConcerns] = useState<Concern[]>([]);
+  const [proxyConcerns, setProxyConcerns] = useState<ProxyConcern[]>([]);
+  
+  // Loading States
+  const [socialLoading, setSocialLoading] = useState<boolean>(true);
+  const [proxyLoading, setProxyLoading] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  
+  // Social Media Tab States
+  const [socialSearchQuery, setSocialSearchQuery] = useState('');
   const [dateRangeType, setDateRangeType] = useState<DateRangeType>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  
-  // Tab/Source Filter (Inside Social Media Dashboard)
   const [activeSourceFilter, setActiveSourceFilter] = useState<'All' | 'Social Media' | 'Board' | 'Other'>('All');
-  const [selectedConcern, setSelectedConcern] = useState<Concern | null>(null);
+  const [selectedSocialConcern, setSelectedSocialConcern] = useState<Concern | null>(null);
 
-  const loadData = async () => {
-    setRefreshing(true);
-    const { concerns: data, headers: cols } = await fetchSheetData();
-    setConcerns(data);
-    setHeaders(cols);
-    setLastSynced(new Date());
-    setRefreshing(false);
-    setLoading(false);
-  };
+  // AI State (Social Media Context)
+  const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
 
+  // Initial Load: Social Media Only (GID 856039892)
   useEffect(() => {
-    loadData();
+    loadSocialData();
   }, []);
 
+  // Lazy Load Proxy (GID 0): Only when requested
+  useEffect(() => {
+    if (activeMainTab === 'Proxy' && proxyConcerns.length === 0 && !proxyLoading) {
+      loadProxyData();
+    }
+  }, [activeMainTab]);
+
+  const loadSocialData = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetchSheetData<Concern>(GIDS.SOCIAL_MEDIA);
+      setSocialConcerns(res.data);
+    } catch (err) {
+      console.error("Social Data Load Error:", err);
+    } finally {
+      setRefreshing(false);
+      setSocialLoading(false);
+    }
+  };
+
+  const loadProxyData = async () => {
+    setProxyLoading(true);
+    try {
+      const res = await fetchSheetData<ProxyConcern>(GIDS.PROXY_CASES);
+      setProxyConcerns(res.data);
+    } catch (err) {
+      console.error("Proxy Data Load Error:", err);
+    } finally {
+      setProxyLoading(false);
+    }
+  };
+
+  const handleSync = () => {
+    if (activeMainTab === 'SocialMedia') loadSocialData();
+    else if (activeMainTab === 'Proxy') loadProxyData();
+  };
+
   const parseSheetDate = (dateStr: string) => {
-    if (!dateStr) return null;
+    if (!dateStr || dateStr === '-') return null;
     const parts = dateStr.split('-');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      const d = new Date(dateStr);
+      return isNaN(d.getTime()) ? null : d;
+    }
     const day = parseInt(parts[0]);
     const monthStr = parts[1];
     const year = 2000 + parseInt(parts[2]);
@@ -55,81 +91,72 @@ const App: React.FC = () => {
   };
 
   const handleGenerateSummary = async () => {
-    if (concerns.length === 0) return;
+    if (socialConcerns.length === 0) return;
     setSummaryLoading(true);
-    const summary = await generateConcernSummary(concerns);
+    const summary = await generateConcernSummary(socialConcerns);
     setAiSummary(summary);
     setSummaryLoading(false);
   };
 
-  const filteredConcerns = useMemo(() => {
+  // Filter Logic for Social Media Tab
+  const filteredSocialConcerns = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const filtered = concerns.filter(c => {
-      // Search logic
+    return socialConcerns.filter(c => {
+      // 1. Search filter
       const searchableString = Object.values(c).join(' ').toLowerCase();
-      const matchesSearch = searchableString.includes(searchQuery.toLowerCase());
+      if (socialSearchQuery && !searchableString.includes(socialSearchQuery.toLowerCase())) return false;
       
-      // Source filter logic (Specific to the Social Media Dashboard view)
+      // 2. Source filter
       const sourceRaw = (c['Source'] || '').toLowerCase();
-      let matchesSource = true;
-      if (activeSourceFilter === 'Social Media') {
-        matchesSource = sourceRaw.includes('social media');
-      } else if (activeSourceFilter === 'Board') {
-        matchesSource = sourceRaw.includes('board') && !sourceRaw.includes('social media');
-      } else if (activeSourceFilter === 'Other') {
-        matchesSource = !sourceRaw.includes('social media') && !sourceRaw.includes('board');
-      }
+      if (activeSourceFilter === 'Social Media' && !sourceRaw.includes('social media')) return false;
+      if (activeSourceFilter === 'Board' && (!sourceRaw.includes('board') || sourceRaw.includes('social media'))) return false;
+      if (activeSourceFilter === 'Other' && (sourceRaw.includes('social media') || sourceRaw.includes('board'))) return false;
       
-      // Date logic
-      let matchesDate = true;
+      // 3. Date filter
       const ackDate = parseSheetDate(c['Acknowledgement Date']);
-      
       if (ackDate) {
-        if (dateRangeType === 'today') {
-          matchesDate = ackDate.getTime() === today.getTime();
-        } else if (dateRangeType === '7d') {
+        if (dateRangeType === 'today' && ackDate.toDateString() !== today.toDateString()) return false;
+        if (dateRangeType === '7d') {
           const sevenDaysAgo = new Date(today);
           sevenDaysAgo.setDate(today.getDate() - 7);
-          matchesDate = ackDate >= sevenDaysAgo;
-        } else if (dateRangeType === '30d') {
+          if (ackDate < sevenDaysAgo) return false;
+        }
+        if (dateRangeType === '30d') {
           const thirtyDaysAgo = new Date(today);
           thirtyDaysAgo.setDate(today.getDate() - 30);
-          matchesDate = ackDate >= thirtyDaysAgo;
-        } else if (dateRangeType === 'this_month') {
-          matchesDate = ackDate.getMonth() === today.getMonth() && ackDate.getFullYear() === today.getFullYear();
-        } else if (dateRangeType === 'custom') {
-          if (startDate) {
-            const start = new Date(startDate);
-            if (ackDate < start) matchesDate = false;
-          }
+          if (ackDate < thirtyDaysAgo) return false;
+        }
+        if (dateRangeType === 'this_month') {
+          if (ackDate.getMonth() !== today.getMonth() || ackDate.getFullYear() !== today.getFullYear()) return false;
+        }
+        if (dateRangeType === 'custom') {
+          if (startDate && ackDate < new Date(startDate)) return false;
           if (endDate) {
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
-            if (ackDate > end) matchesDate = false;
+            if (ackDate > end) return false;
           }
         }
+      } else if (dateRangeType !== 'all') {
+        return false;
       }
 
-      return matchesSearch && matchesSource && matchesDate;
-    });
-
-    return filtered.sort((a, b) => {
-      const s1Val = a['S no.']?.toString().replace(/[^0-9]/g, '') || '0';
-      const s2Val = b['S no.']?.toString().replace(/[^0-9]/g, '') || '0';
-      const s1 = parseInt(s1Val, 10);
-      const s2 = parseInt(s2Val, 10);
+      return true;
+    }).sort((a, b) => {
+      const s1 = parseInt(a['S no.']?.toString().replace(/[^0-9]/g, '') || '0');
+      const s2 = parseInt(b['S no.']?.toString().replace(/[^0-9]/g, '') || '0');
       return s1 - s2;
     });
-  }, [concerns, searchQuery, activeSourceFilter, dateRangeType, startDate, endDate]);
+  }, [socialConcerns, socialSearchQuery, activeSourceFilter, dateRangeType, startDate, endDate]);
 
-  const stats = useMemo(() => {
-    const total = filteredConcerns.length;
-    const closed = filteredConcerns.filter(c => c['Ticket Status'] === 'Closed').length;
-    const wip = filteredConcerns.filter(c => c['Ticket Status'] === 'WIP').length;
+  const socialStats = useMemo(() => {
+    const total = filteredSocialConcerns.length;
+    const closed = filteredSocialConcerns.filter(c => c['Ticket Status'] === 'Closed').length;
+    const wip = filteredSocialConcerns.filter(c => c['Ticket Status'] === 'WIP').length;
     return { total, closed, wip };
-  }, [filteredConcerns]);
+  }, [filteredSocialConcerns]);
 
   const renderBadge = (value: string, type: 'status' | 'source' | 'bs' | 'proxy') => {
     if (!value || value === '-') return <span className="text-slate-300 text-xs">—</span>;
@@ -153,12 +180,12 @@ const App: React.FC = () => {
     return <span className={base + "bg-slate-100 text-slate-600 border border-slate-200"}>{value}</span>;
   };
 
-  if (loading) {
+  if (socialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-[#1a73e8] border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-          <p className="text-slate-600 font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">Syncing Tracker Intelligence...</p>
+          <p className="text-slate-600 font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">Initializing Social Tracker...</p>
         </div>
       </div>
     );
@@ -173,7 +200,7 @@ const App: React.FC = () => {
               <i className="fas fa-shield-halved text-xl sm:text-2xl"></i>
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight leading-tight">Centralized Tracker: Buyer's Help Team</h1>
+              <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight leading-tight">Buyer's Help Central Tracker</h1>
             </div>
           </div>
 
@@ -188,10 +215,10 @@ const App: React.FC = () => {
               </button>
               <button 
                 onClick={() => setActiveMainTab('Proxy')}
-                className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl text-[9px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shrink-0 ${activeMainTab === 'Proxy' ? 'bg-[#1a73e8] text-white shadow-lg shadow-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl text-[9px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shrink-0 ${activeMainTab === 'Proxy' ? 'bg-[#6366f1] text-white shadow-lg shadow-indigo-500/40' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
               >
-                <i className="fas fa-user-shield text-[12px] sm:text-[14px]"></i>
-                Proxy
+                <i className="fas fa-user-secret text-[12px] sm:text-[14px]"></i>
+                Proxy Cases
               </button>
               <button 
                 onClick={() => setActiveMainTab('Legal')}
@@ -211,20 +238,13 @@ const App: React.FC = () => {
           </nav>
 
           <div className="flex items-center justify-between w-full lg:w-auto lg:gap-5">
-             <div className="flex flex-col items-start lg:items-end">
-                <p className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">Connection</p>
-                <div className="flex items-center gap-2">
-                   <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                   <p className="text-[9px] sm:text-[10px] font-black text-white uppercase tracking-wider">Connected</p>
-                </div>
-             </div>
             <button 
-              onClick={loadData}
-              disabled={refreshing}
-              className={`flex items-center gap-2 sm:gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-xl border-2 border-[#1a73e8] text-[#1a73e8] font-black uppercase tracking-widest text-[9px] sm:text-[11px] transition-all bg-transparent ${refreshing ? 'opacity-50' : 'hover:bg-[#1a73e8] hover:text-white shadow-lg shadow-blue-500/10'}`}
+              onClick={handleSync}
+              disabled={refreshing || proxyLoading}
+              className={`flex items-center gap-2 sm:gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-xl border-2 border-[#1a73e8] text-[#1a73e8] font-black uppercase tracking-widest text-[9px] sm:text-[11px] transition-all bg-transparent ${(refreshing || proxyLoading) ? 'opacity-50' : 'hover:bg-[#1a73e8] hover:text-white shadow-lg shadow-blue-500/10'}`}
             >
-              <i className={`fas fa-sync-alt ${refreshing ? 'animate-spin' : ''}`}></i>
-              {refreshing ? '...' : 'Sync'}
+              <i className={`fas fa-sync-alt ${(refreshing || proxyLoading) ? 'animate-spin' : ''}`}></i>
+              {(refreshing || proxyLoading) ? 'Syncing...' : 'Sync Active Tab'}
             </button>
           </div>
         </div>
@@ -233,14 +253,14 @@ const App: React.FC = () => {
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 pt-6 sm:pt-10">
         {activeMainTab === 'SocialMedia' ? (
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+            {/* Social Media Controls */}
             <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-10 shadow-xl shadow-slate-200/50 border border-slate-200 mb-8 sm:mb-10 flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-10">
                <div className="flex flex-col gap-2 sm:gap-3 w-full md:w-auto">
                  <label className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Period Selection</label>
                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <div className="relative w-full sm:w-auto">
-                      <i className="fas fa-calendar-day absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 z-10"></i>
                       <select 
-                        className="w-full pl-14 pr-12 py-3 sm:py-4 bg-slate-50 border-none rounded-2xl text-[11px] sm:text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-50 cursor-pointer appearance-none shadow-sm min-w-[200px] transition-all"
+                        className="w-full pl-6 pr-12 py-3 sm:py-4 bg-slate-50 border-none rounded-2xl text-[11px] sm:text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-50 cursor-pointer appearance-none shadow-sm min-w-[200px]"
                         value={dateRangeType}
                         onChange={(e) => setDateRangeType(e.target.value as DateRangeType)}
                       >
@@ -262,7 +282,7 @@ const App: React.FC = () => {
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
                         />
-                        <span className="text-[9px] sm:text-[10px] font-black text-slate-300 uppercase shrink-0">To</span>
+                        <span className="text-[9px] font-black text-slate-300 uppercase shrink-0">To</span>
                         <input 
                           type="date" 
                           className="flex-1 sm:flex-none bg-slate-50 border-none rounded-xl px-4 py-3 sm:px-5 sm:py-4 text-[11px] sm:text-xs font-black text-slate-600 focus:ring-4 focus:ring-blue-50 shadow-sm"
@@ -277,14 +297,14 @@ const App: React.FC = () => {
                <div className="h-16 w-px bg-slate-100 hidden md:block"></div>
 
                <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8">
-                  <StatCard label="Total Received" value={stats.total} icon="fa-database" color="bg-slate-900" />
-                  <StatCard label="Resolved" value={stats.closed} icon="fa-circle-check" color="bg-[#10b981]" />
-                  <StatCard label="WIP Cases" value={stats.wip} icon="fa-hourglass-half" color="bg-[#f59e0b]" />
+                  <StatCard label="Social Inflow" value={socialStats.total} icon="fa-database" color="bg-slate-900" />
+                  <StatCard label="Resolved" value={socialStats.closed} icon="fa-circle-check" color="bg-[#10b981]" />
+                  <StatCard label="WIP" value={socialStats.wip} icon="fa-hourglass-half" color="bg-[#f59e0b]" />
                </div>
             </div>
 
             <ChartsSection 
-              concerns={filteredConcerns} 
+              concerns={filteredSocialConcerns} 
               activeTab={activeSourceFilter} 
               setActiveTab={setActiveSourceFilter} 
             />
@@ -296,9 +316,9 @@ const App: React.FC = () => {
                     <div className="w-full md:w-auto">
                       <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-3 sm:gap-5">
                         <span className="w-2 sm:w-2.5 h-8 sm:h-10 bg-[#1a73e8] rounded-full shadow-lg shadow-blue-500/20"></span>
-                        Escalations List
+                        Social Audit Log
                       </h2>
-                      <p className="text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1 sm:mt-2 ml-5 sm:ml-7">{activeSourceFilter} Filter Active</p>
+                      <p className="text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1 sm:mt-2 ml-5 sm:ml-7">{activeSourceFilter} Context Active</p>
                     </div>
                     
                     <div className="flex items-center gap-4 w-full md:w-auto">
@@ -306,37 +326,37 @@ const App: React.FC = () => {
                         <i className="fas fa-magnifying-glass absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1a73e8] transition-colors z-10"></i>
                         <input 
                           type="text" 
-                          placeholder="Search records..."
-                          className="w-full pl-16 pr-8 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-blue-100 focus:bg-white transition-all shadow-sm outline-none"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search threads..."
+                          className="w-full pl-16 pr-8 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                          value={socialSearchQuery}
+                          onChange={(e) => setSocialSearchQuery(e.target.value)}
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px] sm:max-h-[700px] scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px] no-scrollbar">
                     <table className="w-full text-left border-collapse min-w-[800px]">
                       <thead className="sticky top-0 z-20 bg-[#f8fafc] shadow-sm">
                         <tr>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest text-center w-24">S#</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest">Mail Thread / Context</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Ticket Id</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">TAT</th>
+                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">S#</th>
+                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mail Thread / Context</th>
+                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ticket Id</th>
+                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">TAT</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {filteredConcerns.map((c) => (
-                          <tr key={c.id} onClick={() => setSelectedConcern(c)} className="group hover:bg-blue-50/40 cursor-pointer transition-all duration-300">
+                        {filteredSocialConcerns.map((c) => (
+                          <tr key={c.id} onClick={() => setSelectedSocialConcern(c)} className="group hover:bg-blue-50/40 cursor-pointer transition-all duration-300">
                             <td className="px-6 sm:px-10 py-6 sm:py-10 text-center text-[11px] sm:text-[12px] font-black text-slate-300 group-hover:text-[#1a73e8]">{c['S no.']}</td>
                             <td className="px-6 sm:px-10 py-6 sm:py-10 max-w-lg lg:max-w-2xl">
                               <div className="flex flex-col gap-3 sm:gap-4">
-                                 <h4 className="text-[14px] sm:text-[16px] font-black text-slate-800 line-clamp-2 group-hover:text-[#1a73e8] leading-tight transition-colors">{c['Mail Thread']}</h4>
+                                 <h4 className="text-[14px] sm:text-[16px] font-black text-slate-800 line-clamp-2 group-hover:text-[#1a73e8] transition-colors">{c['Mail Thread']}</h4>
                                  <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
                                     {renderBadge(c['BS/Activation'], 'bs')}
                                     {renderBadge(c['Proxy'], 'proxy')}
-                                    <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-lg"><i className="fas fa-clock-rotate-left text-slate-300"></i> {c['Acknowledgement Date']}</span>
+                                    <span className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-lg"><i className="fas fa-clock-rotate-left text-slate-300"></i> {c['Acknowledgement Date']}</span>
                                  </div>
                               </div>
                             </td>
@@ -349,16 +369,6 @@ const App: React.FC = () => {
                             </td>
                           </tr>
                         ))}
-                        {filteredConcerns.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="px-6 sm:px-10 py-16 sm:py-20 text-center">
-                               <div className="flex flex-col items-center gap-4 text-slate-400">
-                                 <i className="fas fa-inbox text-3xl sm:text-4xl opacity-20"></i>
-                                 <p className="font-black uppercase tracking-widest text-[9px] sm:text-[11px]">No matching records found</p>
-                               </div>
-                            </td>
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>
@@ -368,26 +378,26 @@ const App: React.FC = () => {
               <aside className="w-full xl:w-[400px] space-y-10 xl:sticky xl:top-28">
                  <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] rounded-[2rem] sm:rounded-[3rem] p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden group border border-white/5">
                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-                   <h3 className="text-2xl sm:text-3xl font-black mb-3 sm:mb-4 flex items-center gap-4 sm:gap-5">
+                   <h3 className="text-2xl font-black mb-3 sm:mb-4 flex items-center gap-4">
                      <i className="fas fa-microchip text-blue-400"></i>
-                     AI Analyst
+                     AI Insights
                    </h3>
-                   <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.4em] text-blue-400 mb-8 sm:mb-10 border-b border-white/5 pb-4 sm:pb-6">Audit Intelligence</p>
+                   <p className="text-[9px] font-black uppercase tracking-[0.4em] text-blue-400 mb-8 sm:mb-10 border-b border-white/5 pb-4 sm:pb-6">Social Context Audit</p>
                    {aiSummary ? (
                      <div className="space-y-8 sm:space-y-10 animate-in fade-in duration-700">
                         <div>
-                          <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 sm:mb-4">Situational Overview</h4>
+                          <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 sm:mb-4">Situational Overview</h4>
                           <p className="text-sm sm:text-base leading-relaxed font-bold text-slate-200">{aiSummary.overview}</p>
                         </div>
-                        <button onClick={handleGenerateSummary} className="w-full py-4 sm:py-5 bg-[#1a73e8] text-white rounded-[1.25rem] sm:rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.3em] shadow-xl hover:shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
+                        <button onClick={handleGenerateSummary} className="w-full py-4 sm:py-5 bg-[#1a73e8] text-white rounded-[1.25rem] sm:rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.3em] shadow-xl hover:shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
                           <i className="fas fa-rotate"></i>
                           Recalculate AI
                         </button>
                      </div>
                    ) : (
                      <div className="py-10 sm:py-14 text-center">
-                        <p className="text-base sm:text-lg text-slate-300 mb-8 sm:mb-12 font-bold max-w-xs mx-auto">Deep analyze {filteredConcerns.length} audited threads for operational patterns.</p>
-                        <button onClick={handleGenerateSummary} disabled={summaryLoading} className="w-full py-4 sm:py-6 bg-white text-[#0f172a] rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] shadow-2xl flex items-center justify-center gap-4 hover:scale-[1.05] disabled:opacity-50 transition-all duration-300">
+                        <p className="text-base sm:text-lg text-slate-300 mb-8 sm:mb-12 font-bold max-w-xs mx-auto">Analyze {filteredSocialConcerns.length} social threads for operational patterns.</p>
+                        <button onClick={handleGenerateSummary} disabled={summaryLoading} className="w-full py-4 sm:py-6 bg-white text-[#0f172a] rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-[0.3em] shadow-2xl flex items-center justify-center gap-4 hover:scale-[1.05] disabled:opacity-50 transition-all duration-300">
                           {summaryLoading ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-bolt-lightning text-amber-500"></i>}
                           {summaryLoading ? '...' : 'Activate AI'}
                         </button>
@@ -397,42 +407,51 @@ const App: React.FC = () => {
               </aside>
             </div>
           </div>
+        ) : activeMainTab === 'Proxy' ? (
+          <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+            {proxyLoading && proxyConcerns.length === 0 ? (
+               <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
+                  <i className="fas fa-spinner animate-spin text-4xl mb-4"></i>
+                  <p className="text-xs font-black uppercase tracking-widest">Fetching Proxy Intelligence (GID 0)...</p>
+               </div>
+            ) : (
+              <ProxyDashboard data={proxyConcerns} />
+            )}
+          </div>
         ) : (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] sm:min-h-[60vh] text-center animate-in fade-in zoom-in duration-700">
-             <div className="w-24 h-24 sm:w-32 sm:h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6 sm:mb-8 text-slate-300 border border-slate-200">
-                <i className="fas fa-compass-drafting text-4xl sm:text-5xl"></i>
+          <div className="flex flex-col items-center justify-center min-h-[50vh] text-center animate-in fade-in zoom-in duration-700">
+             <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6 text-slate-300 border border-slate-200">
+                <i className="fas fa-compass-drafting text-4xl"></i>
              </div>
-             <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-2 sm:mb-3 tracking-tight">Module Inactive</h2>
-             <p className="text-sm sm:text-base text-slate-500 font-bold max-w-md leading-relaxed px-4">
-                The <span className="text-[#1a73e8]">{activeMainTab === 'Proxy' ? 'Proxy Control' : activeMainTab === 'Legal' ? 'Legal Compliance' : 'Thread Priority'}</span> dashboard is currently under structural provision.
+             <h2 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Module Inactive</h2>
+             <p className="text-sm text-slate-500 font-bold max-w-md leading-relaxed px-4">
+                The <span className="text-[#1a73e8]">{activeMainTab === 'Legal' ? 'Legal Compliance' : 'Important Threads'}</span> dashboard is currently under structural provision.
              </p>
           </div>
         )}
       </main>
 
-      {selectedConcern && (
+      {selectedSocialConcern && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
-            {/* COMPACTED HEADER: Smaller padding and adjusted font to prevent overlap */}
             <div className="px-6 sm:px-10 py-4 sm:py-6 bg-[#1a73e8] text-white flex flex-col gap-3 relative overflow-hidden shrink-0">
               <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-3xl"></div>
               <div className="flex justify-between items-start relative z-10">
                 <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                    <div className="bg-white/20 backdrop-blur-md px-2.5 py-1 rounded-lg text-[8px] sm:text-[10px] font-black uppercase tracking-widest border border-white/10">
-                     ID: {selectedConcern['Ticket Id'] || 'PENDING'}
+                     ID: {selectedSocialConcern['Ticket Id'] || 'PENDING'}
                    </div>
-                   {renderBadge(selectedConcern['Ticket Status'], 'status')}
+                   {renderBadge(selectedSocialConcern['Ticket Status'], 'status')}
                 </div>
                 <button 
-                  onClick={() => setSelectedConcern(null)} 
+                  onClick={() => setSelectedSocialConcern(null)} 
                   className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-xl transition-all"
                 >
                   <i className="fas fa-times text-base sm:text-lg"></i>
                 </button>
               </div>
-              {/* Reduced title font size */}
               <h3 className="text-lg sm:text-xl md:text-2xl font-black leading-tight tracking-tight break-words relative z-10 pr-10">
-                {selectedConcern['Mail Thread']}
+                {selectedSocialConcern['Mail Thread']}
               </h3>
             </div>
             
@@ -440,69 +459,55 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-8 sm:mb-10">
                 <div className="space-y-6 sm:space-y-8">
                   <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Escalation Type</label>
-                    <div className="p-4 sm:p-5 bg-blue-50/50 rounded-2xl border border-blue-100 flex items-center gap-3 text-[12px] sm:text-[13px] font-black text-blue-900 shadow-sm">
-                      <i className="fas fa-tags text-blue-400"></i>
-                      {selectedConcern.category || "General Escalation"}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Source</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Source Info</label>
                     <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
-                      {renderBadge(selectedConcern['Source'], 'source')}
+                      {renderBadge(selectedSocialConcern['Source'], 'source')}
                     </div>
                   </div>
                   <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Date Received</label>
-                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[12px] sm:text-[13px] font-black text-slate-700 shadow-sm">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Audit Received</label>
+                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 text-[12px] font-black text-slate-700 shadow-sm">
                       <i className="fas fa-calendar-check text-[#1a73e8]"></i>
-                      {selectedConcern['Acknowledgement Date']}
+                      {selectedSocialConcern['Acknowledgement Date']}
                     </div>
                   </div>
                 </div>
                 
                 <div className="space-y-6 sm:space-y-8">
                   <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Status</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Resolution Status</label>
                     <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
-                      {renderBadge(selectedConcern['Ticket Status'], 'status')}
-                    </div>
-                  </div>
-                  {/* MODIFIED: Label changed to BS/Activation as requested */}
-                  <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">BS/Activation</label>
-                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
-                      {renderBadge(selectedConcern['BS/Activation'], 'bs')}
+                      {renderBadge(selectedSocialConcern['Ticket Status'], 'status')}
                     </div>
                   </div>
                   <div>
-                    <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 sm:mb-3 block">Audit TAT</label>
-                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 sm:gap-4 text-[12px] sm:text-[13px] font-black text-slate-700 shadow-sm">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Audit TAT</label>
+                    <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 text-[12px] font-black text-slate-700 shadow-sm">
                       <i className="fas fa-hourglass-start text-[#1a73e8]"></i>
-                      {selectedConcern['TAT'] || '0'} Days
+                      {selectedSocialConcern['TAT'] || '0'} Days
                     </div>
                   </div>
                 </div>
               </div>
               
               <div>
-                 <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 sm:mb-4 block">Resolution Insights</label>
-                 <div className="p-6 sm:p-8 bg-slate-50 rounded-[1.5rem] sm:rounded-[2.5rem] text-slate-700 font-bold italic leading-relaxed border border-slate-200 shadow-inner">
-                    <p className="text-base sm:text-lg">
-                      {selectedConcern['Closing Comment'] && selectedConcern['Closing Comment'] !== '-' 
-                        ? selectedConcern['Closing Comment'] 
-                        : "Detailed resolution intelligence is pending for this thread."}
+                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Resolution Insights</label>
+                 <div className="p-6 sm:p-8 bg-slate-50 rounded-[1.5rem] text-slate-700 font-bold italic leading-relaxed border border-slate-200 shadow-inner">
+                    <p className="text-base">
+                      {selectedSocialConcern['Closing Comment'] && selectedSocialConcern['Closing Comment'] !== '-' 
+                        ? selectedSocialConcern['Closing Comment'] 
+                        : "Detailed audit remarks are pending for this entry."}
                     </p>
                  </div>
               </div>
             </div>
             
-            <div className="px-6 sm:px-10 py-5 sm:py-6 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            <div className="px-6 sm:px-10 py-5 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
               <button 
-                onClick={() => setSelectedConcern(null)} 
-                className="w-full sm:w-auto bg-slate-900 text-white px-8 sm:px-12 py-3 sm:py-3.5 rounded-xl font-black uppercase tracking-[0.2em] text-[10px] sm:text-[11px] shadow-xl hover:bg-black transition-all hover:scale-105 active:scale-95"
+                onClick={() => setSelectedSocialConcern(null)} 
+                className="w-full sm:w-auto bg-slate-900 text-white px-10 py-3.5 rounded-xl font-black uppercase tracking-[0.2em] text-[10px] shadow-xl hover:bg-black transition-all hover:scale-105 active:scale-95"
               >
-                Close Audit
+                Close Audit View
               </button>
             </div>
           </div>
