@@ -24,16 +24,26 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
 
   const parseSheetDate = (dateStr: string) => {
     if (!dateStr || dateStr === '-') return null;
+    
+    // Handle DD-MMM-YY
     const parts = dateStr.split('-');
-    if (parts.length !== 3) {
-      const d = new Date(dateStr);
-      return isNaN(d.getTime()) ? null : d;
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const monthStr = parts[1];
+      const yearRaw = parts[2];
+      const year = yearRaw.length === 2 ? 2000 + parseInt(yearRaw) : parseInt(yearRaw);
+      
+      const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+      const monthIndex = monthNames.indexOf(monthStr.toLowerCase().substring(0, 3));
+      
+      if (monthIndex !== -1 && !isNaN(day) && !isNaN(year)) {
+        return new Date(year, monthIndex, day);
+      }
     }
-    const day = parseInt(parts[0]);
-    const monthStr = parts[1];
-    const year = 2000 + parseInt(parts[2]);
-    const month = new Date(`${monthStr} 1, 2000`).getMonth();
-    return new Date(year, month, day);
+    
+    // Fallback for other standard formats
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
   };
 
   const filteredData = useMemo(() => {
@@ -85,7 +95,7 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
 
   const stats = useMemo(() => {
     const total = filteredData.length;
-    const introYes = filteredData.filter(d => d['Introduction Found'] === 'Yes').length;
+    const introYes = filteredData.filter(d => d['Introduction Found']?.toLowerCase() === 'yes').length;
     const associates = new Set(filteredData.map(d => d['Owner']).filter(Boolean)).size;
 
     return { total, introYes, associates };
@@ -111,7 +121,7 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
 
   const introMix = useMemo(() => {
     const counts = filteredData.reduce((acc: any, d) => {
-      const key = d['Introduction Found'] === 'Yes' ? 'Found' : 'Not Found';
+      const key = d['Introduction Found']?.toLowerCase() === 'yes' ? 'Found' : 'Not Found';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
@@ -121,9 +131,9 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
   const trendData = useMemo(() => {
     const timeline: any = {};
     filteredData.forEach(d => {
-      const date = d['Acknowledgement Date'];
-      if (date && date !== '-') {
-        timeline[date] = (timeline[date] || 0) + 1;
+      const dateStr = d['Acknowledgement Date'];
+      if (dateStr && dateStr !== '-') {
+        timeline[dateStr] = (timeline[dateStr] || 0) + 1;
       }
     });
     return Object.entries(timeline)
@@ -332,7 +342,13 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredData.map((d) => (
+              {filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={24} className="px-6 py-20 text-center text-slate-400 font-bold">
+                    No matching records found.
+                  </td>
+                </tr>
+              ) : filteredData.map((d) => (
                 <tr key={d.id} onClick={() => setSelectedConcern(d)} className="hover:bg-indigo-50/30 transition-colors cursor-pointer group">
                   <td className="px-6 py-5 text-xs font-black text-slate-300 border-r border-slate-50 group-hover:text-indigo-600">{d['S no.']}</td>
                   <td className="px-6 py-5 text-[11px] font-bold text-slate-600 border-r border-slate-50">{d['Acknowledgement Date']}</td>
@@ -346,8 +362,8 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
                   <td className="px-6 py-5 text-[11px] font-bold text-slate-500 border-r border-slate-50">{d['Unresolved BS Complaints']}</td>
                   <td className="px-6 py-5 text-[11px] font-bold text-slate-500 border-r border-slate-50">{d['Complainant GLID']}</td>
                   <td className="px-6 py-5 text-center border-r border-slate-50">
-                    <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-tight ${d['Introduction Found'] === 'Yes' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-                      {d['Introduction Found']}
+                    <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-tight ${d['Introduction Found']?.toLowerCase() === 'yes' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                      {d['Introduction Found'] || 'No'}
                     </span>
                   </td>
                   <td className="px-6 py-5 text-[11px] font-bold text-slate-500 border-r border-slate-50">{d['MM Seller GLID']}</td>
@@ -362,7 +378,7 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
                   <td className="px-6 py-5 text-[11px] font-bold border-r border-slate-50">{renderTableCell(d['Document Link'])}</td>
                   <td className="px-6 py-5 text-[11px] font-bold text-slate-500 border-r border-slate-50 max-w-sm truncate">{d['Additional Mobile, UPI or other details']}</td>
                   <td className="px-6 py-5 border-r border-slate-50">
-                    <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-tight ${d['Status'] === 'Solved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-tight ${d['Status']?.toLowerCase() === 'solved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {d['Status']}
                     </span>
                   </td>
@@ -386,7 +402,7 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
                   <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/10">
                     ID: {selectedConcern['Ticket ID'] || 'N/A'}
                   </div>
-                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${selectedConcern['Status'] === 'Solved' ? 'bg-emerald-400/20 border-emerald-400 text-emerald-100' : 'bg-amber-400/20 border-amber-400 text-amber-100'}`}>
+                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${selectedConcern['Status']?.toLowerCase() === 'solved' ? 'bg-emerald-400/20 border-emerald-400 text-emerald-100' : 'bg-amber-400/20 border-amber-400 text-amber-100'}`}>
                     {selectedConcern['Status'] || 'Unknown'}
                   </span>
                 </div>
@@ -398,7 +414,7 @@ const ProxyDashboard: React.FC<ProxyDashboardProps> = ({ data }) => {
                 </button>
               </div>
               <h3 className="text-xl sm:text-2xl font-black leading-tight tracking-tight break-words relative z-10">
-                Proxy Case: {selectedConcern['Ticket ID']}
+                Proxy Case: {selectedConcern['Ticket ID'] || 'Investigation Record'}
               </h3>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-200 relative z-10">Full Case Investigation Record</p>
             </div>

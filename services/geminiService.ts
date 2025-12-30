@@ -2,9 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Concern } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export async function generateConcernSummary(concerns: Concern[]) {
+  // Move initialization inside to ensure it always uses the most up-to-date API key.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const dataString = JSON.stringify(concerns.slice(0, 50)); // Limit to first 50 for token management
 
   const response = await ai.models.generateContent({
@@ -36,7 +36,8 @@ export async function generateConcernSummary(concerns: Concern[]) {
   });
 
   try {
-    return JSON.parse(response.text);
+    // response.text is a property access, not a function call.
+    return JSON.parse(response.text || '{}');
   } catch (e) {
     console.error("Failed to parse Gemini response", e);
     return null;

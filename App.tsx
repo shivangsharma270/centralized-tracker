@@ -13,16 +13,15 @@ type MainTabType = 'SocialMedia' | 'Proxy' | 'Legal' | 'Important';
 const App: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('SocialMedia');
   
-  // Strict State Isolation
   const [socialConcerns, setSocialConcerns] = useState<Concern[]>([]);
   const [proxyConcerns, setProxyConcerns] = useState<ProxyConcern[]>([]);
   
-  // Loading States
   const [socialLoading, setSocialLoading] = useState<boolean>(true);
   const [proxyLoading, setProxyLoading] = useState<boolean>(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const [proxyError, setProxyError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   
-  // Social Media Tab States
   const [socialSearchQuery, setSocialSearchQuery] = useState('');
   const [dateRangeType, setDateRangeType] = useState<DateRangeType>('all');
   const [startDate, setStartDate] = useState('');
@@ -30,16 +29,13 @@ const App: React.FC = () => {
   const [activeSourceFilter, setActiveSourceFilter] = useState<'All' | 'Social Media' | 'Board' | 'Other'>('All');
   const [selectedSocialConcern, setSelectedSocialConcern] = useState<Concern | null>(null);
 
-  // AI State (Social Media Context)
   const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
 
-  // Initial Load: Social Media Only (GID 856039892)
   useEffect(() => {
     loadSocialData();
   }, []);
 
-  // Lazy Load Proxy (GID 0): Only when requested
   useEffect(() => {
     if (activeMainTab === 'Proxy' && proxyConcerns.length === 0 && !proxyLoading) {
       loadProxyData();
@@ -48,11 +44,12 @@ const App: React.FC = () => {
 
   const loadSocialData = async () => {
     setRefreshing(true);
+    setSocialError(null);
     try {
       const res = await fetchSheetData<Concern>(GIDS.SOCIAL_MEDIA);
       setSocialConcerns(res.data);
-    } catch (err) {
-      console.error("Social Data Load Error:", err);
+    } catch (err: any) {
+      setSocialError(err.message || 'Failed to load social media data');
     } finally {
       setRefreshing(false);
       setSocialLoading(false);
@@ -61,11 +58,12 @@ const App: React.FC = () => {
 
   const loadProxyData = async () => {
     setProxyLoading(true);
+    setProxyError(null);
     try {
       const res = await fetchSheetData<ProxyConcern>(GIDS.PROXY_CASES);
       setProxyConcerns(res.data);
-    } catch (err) {
-      console.error("Proxy Data Load Error:", err);
+    } catch (err: any) {
+      setProxyError(err.message || 'Failed to load proxy case data');
     } finally {
       setProxyLoading(false);
     }
@@ -98,23 +96,19 @@ const App: React.FC = () => {
     setSummaryLoading(false);
   };
 
-  // Filter Logic for Social Media Tab
   const filteredSocialConcerns = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     return socialConcerns.filter(c => {
-      // 1. Search filter
       const searchableString = Object.values(c).join(' ').toLowerCase();
       if (socialSearchQuery && !searchableString.includes(socialSearchQuery.toLowerCase())) return false;
       
-      // 2. Source filter
       const sourceRaw = (c['Source'] || '').toLowerCase();
       if (activeSourceFilter === 'Social Media' && !sourceRaw.includes('social media')) return false;
       if (activeSourceFilter === 'Board' && (!sourceRaw.includes('board') || sourceRaw.includes('social media'))) return false;
       if (activeSourceFilter === 'Other' && (sourceRaw.includes('social media') || sourceRaw.includes('board'))) return false;
       
-      // 3. Date filter
       const ackDate = parseSheetDate(c['Acknowledgement Date']);
       if (ackDate) {
         if (dateRangeType === 'today' && ackDate.toDateString() !== today.toDateString()) return false;
@@ -253,167 +247,198 @@ const App: React.FC = () => {
       <main className="max-w-[1800px] mx-auto px-4 sm:px-6 pt-6 sm:pt-10">
         {activeMainTab === 'SocialMedia' ? (
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-            {/* Social Media Controls */}
-            <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-10 shadow-xl shadow-slate-200/50 border border-slate-200 mb-8 sm:mb-10 flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-10">
-               <div className="flex flex-col gap-2 sm:gap-3 w-full md:w-auto">
-                 <label className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Period Selection</label>
-                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className="relative w-full sm:w-auto">
-                      <select 
-                        className="w-full pl-6 pr-12 py-3 sm:py-4 bg-slate-50 border-none rounded-2xl text-[11px] sm:text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-50 cursor-pointer appearance-none shadow-sm min-w-[200px]"
-                        value={dateRangeType}
-                        onChange={(e) => setDateRangeType(e.target.value as DateRangeType)}
-                      >
-                        <option value="all">Full History</option>
-                        <option value="today">Today</option>
-                        <option value="7d">Last 7 Days</option>
-                        <option value="30d">Last 30 Days</option>
-                        <option value="this_month">Current Month</option>
-                        <option value="custom">Custom Range</option>
-                      </select>
-                      <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[11px]"></i>
-                    </div>
+            {socialError ? (
+              <div className="bg-white p-12 rounded-[2.5rem] border border-rose-100 shadow-xl shadow-rose-500/5 text-center">
+                <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+                  <i className="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3 className="text-xl font-black text-slate-800 mb-2">Sync Error</h3>
+                <p className="text-slate-500 font-medium mb-8 max-w-md mx-auto">{socialError}</p>
+                <button 
+                  onClick={loadSocialData}
+                  className="bg-[#1a73e8] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 active:scale-95 transition-all shadow-lg shadow-blue-500/20"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-10 shadow-xl shadow-slate-200/50 border border-slate-200 mb-8 sm:mb-10 flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-10">
+                  <div className="flex flex-col gap-2 sm:gap-3 w-full md:w-auto">
+                    <label className="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Period Selection</label>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="relative w-full sm:w-auto">
+                          <select 
+                            className="w-full pl-6 pr-12 py-3 sm:py-4 bg-slate-50 border-none rounded-2xl text-[11px] sm:text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-50 cursor-pointer appearance-none shadow-sm min-w-[200px]"
+                            value={dateRangeType}
+                            onChange={(e) => setDateRangeType(e.target.value as DateRangeType)}
+                          >
+                            <option value="all">Full History</option>
+                            <option value="today">Today</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                            <option value="this_month">Current Month</option>
+                            <option value="custom">Custom Range</option>
+                          </select>
+                          <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[11px]"></i>
+                        </div>
 
-                    {dateRangeType === 'custom' && (
-                      <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto animate-in fade-in zoom-in duration-300">
-                        <input 
-                          type="date" 
-                          className="flex-1 sm:flex-none bg-slate-50 border-none rounded-xl px-4 py-3 sm:px-5 sm:py-4 text-[11px] sm:text-xs font-black text-slate-600 focus:ring-4 focus:ring-blue-50 shadow-sm"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                        />
-                        <span className="text-[9px] font-black text-slate-300 uppercase shrink-0">To</span>
-                        <input 
-                          type="date" 
-                          className="flex-1 sm:flex-none bg-slate-50 border-none rounded-xl px-4 py-3 sm:px-5 sm:py-4 text-[11px] sm:text-xs font-black text-slate-600 focus:ring-4 focus:ring-blue-50 shadow-sm"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                        />
-                      </div>
-                    )}
-                 </div>
-               </div>
-
-               <div className="h-16 w-px bg-slate-100 hidden md:block"></div>
-
-               <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8">
-                  <StatCard label="Social Inflow" value={socialStats.total} icon="fa-database" color="bg-slate-900" />
-                  <StatCard label="Resolved" value={socialStats.closed} icon="fa-circle-check" color="bg-[#10b981]" />
-                  <StatCard label="WIP" value={socialStats.wip} icon="fa-hourglass-half" color="bg-[#f59e0b]" />
-               </div>
-            </div>
-
-            <ChartsSection 
-              concerns={filteredSocialConcerns} 
-              activeTab={activeSourceFilter} 
-              setActiveTab={setActiveSourceFilter} 
-            />
-
-            <div className="mt-10 sm:mt-14 flex flex-col xl:flex-row gap-8 sm:gap-12 items-start">
-              <div className="flex-1 w-full space-y-8 sm:space-y-10">
-                <div className="bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl shadow-slate-200/60 border border-slate-200 overflow-hidden">
-                  <div className="px-6 sm:px-12 py-8 sm:py-10 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 sm:gap-8 bg-slate-50/40">
-                    <div className="w-full md:w-auto">
-                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-3 sm:gap-5">
-                        <span className="w-2 sm:w-2.5 h-8 sm:h-10 bg-[#1a73e8] rounded-full shadow-lg shadow-blue-500/20"></span>
-                        Social Audit Log
-                      </h2>
-                      <p className="text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1 sm:mt-2 ml-5 sm:ml-7">{activeSourceFilter} Context Active</p>
-                    </div>
-                    
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                      <div className="relative group w-full md:w-[350px]">
-                        <i className="fas fa-magnifying-glass absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1a73e8] transition-colors z-10"></i>
-                        <input 
-                          type="text" 
-                          placeholder="Search threads..."
-                          className="w-full pl-16 pr-8 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
-                          value={socialSearchQuery}
-                          onChange={(e) => setSocialSearchQuery(e.target.value)}
-                        />
-                      </div>
+                        {dateRangeType === 'custom' && (
+                          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto animate-in fade-in zoom-in duration-300">
+                            <input 
+                              type="date" 
+                              className="flex-1 sm:flex-none bg-slate-50 border-none rounded-xl px-4 py-3 sm:px-5 sm:py-4 text-[11px] sm:text-xs font-black text-slate-600 focus:ring-4 focus:ring-blue-50 shadow-sm"
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                            />
+                            <span className="text-[9px] font-black text-slate-300 uppercase shrink-0">To</span>
+                            <input 
+                              type="date" 
+                              className="flex-1 sm:flex-none bg-slate-50 border-none rounded-xl px-4 py-3 sm:px-5 sm:py-4 text-[11px] sm:text-xs font-black text-slate-600 focus:ring-4 focus:ring-blue-50 shadow-sm"
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                            />
+                          </div>
+                        )}
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px] no-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
-                      <thead className="sticky top-0 z-20 bg-[#f8fafc] shadow-sm">
-                        <tr>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">S#</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mail Thread / Context</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ticket Id</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                          <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">TAT</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredSocialConcerns.map((c) => (
-                          <tr key={c.id} onClick={() => setSelectedSocialConcern(c)} className="group hover:bg-blue-50/40 cursor-pointer transition-all duration-300">
-                            <td className="px-6 sm:px-10 py-6 sm:py-10 text-center text-[11px] sm:text-[12px] font-black text-slate-300 group-hover:text-[#1a73e8]">{c['S no.']}</td>
-                            <td className="px-6 sm:px-10 py-6 sm:py-10 max-w-lg lg:max-w-2xl">
-                              <div className="flex flex-col gap-3 sm:gap-4">
-                                 <h4 className="text-[14px] sm:text-[16px] font-black text-slate-800 line-clamp-2 group-hover:text-[#1a73e8] transition-colors">{c['Mail Thread']}</h4>
-                                 <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
-                                    {renderBadge(c['BS/Activation'], 'bs')}
-                                    {renderBadge(c['Proxy'], 'proxy')}
-                                    <span className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-lg"><i className="fas fa-clock-rotate-left text-slate-300"></i> {c['Acknowledgement Date']}</span>
-                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-6 sm:px-10 py-6 sm:py-10 text-center"><span className="text-[10px] sm:text-[11px] font-mono font-black text-slate-600 bg-slate-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border border-slate-200/50 group-hover:bg-white">{c['Ticket Id'] || 'N/A'}</span></td>
-                            <td className="px-6 sm:px-10 py-6 sm:py-10 text-center">{renderBadge(c['Ticket Status'], 'status')}</td>
-                            <td className="px-6 sm:px-10 py-6 sm:py-10 text-center">
-                               <div className={`text-[11px] sm:text-[12px] font-black inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl shadow-sm border transition-all ${Number(c['TAT']) > 15 ? 'bg-rose-50 text-rose-600 border-rose-100 scale-110' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
-                                 {c['TAT'] || '0'}d
-                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="h-16 w-px bg-slate-100 hidden md:block"></div>
+
+                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8">
+                      <StatCard label="Social Inflow" value={socialStats.total} icon="fa-database" color="bg-slate-900" />
+                      <StatCard label="Resolved" value={socialStats.closed} icon="fa-circle-check" color="bg-[#10b981]" />
+                      <StatCard label="WIP" value={socialStats.wip} icon="fa-hourglass-half" color="bg-[#f59e0b]" />
                   </div>
                 </div>
-              </div>
 
-              <aside className="w-full xl:w-[400px] space-y-10 xl:sticky xl:top-28">
-                 <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] rounded-[2rem] sm:rounded-[3rem] p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden group border border-white/5">
-                   <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-                   <h3 className="text-2xl font-black mb-3 sm:mb-4 flex items-center gap-4">
-                     <i className="fas fa-microchip text-blue-400"></i>
-                     AI Insights
-                   </h3>
-                   <p className="text-[9px] font-black uppercase tracking-[0.4em] text-blue-400 mb-8 sm:mb-10 border-b border-white/5 pb-4 sm:pb-6">Social Context Audit</p>
-                   {aiSummary ? (
-                     <div className="space-y-8 sm:space-y-10 animate-in fade-in duration-700">
-                        <div>
-                          <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 sm:mb-4">Situational Overview</h4>
-                          <p className="text-sm sm:text-base leading-relaxed font-bold text-slate-200">{aiSummary.overview}</p>
+                <ChartsSection 
+                  concerns={filteredSocialConcerns} 
+                  activeTab={activeSourceFilter} 
+                  setActiveTab={setActiveSourceFilter} 
+                />
+
+                <div className="mt-10 sm:mt-14 flex flex-col xl:flex-row gap-8 sm:gap-12 items-start">
+                  <div className="flex-1 w-full space-y-8 sm:space-y-10">
+                    <div className="bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl shadow-slate-200/60 border border-slate-200 overflow-hidden">
+                      <div className="px-6 sm:px-12 py-8 sm:py-10 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 sm:gap-8 bg-slate-50/40">
+                        <div className="w-full md:w-auto">
+                          <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-3 sm:gap-5">
+                            <span className="w-2 sm:w-2.5 h-8 sm:h-10 bg-[#1a73e8] rounded-full shadow-lg shadow-blue-500/20"></span>
+                            Social Audit Log
+                          </h2>
+                          <p className="text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1 sm:mt-2 ml-5 sm:ml-7">{activeSourceFilter} Context Active</p>
                         </div>
-                        <button onClick={handleGenerateSummary} className="w-full py-4 sm:py-5 bg-[#1a73e8] text-white rounded-[1.25rem] sm:rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.3em] shadow-xl hover:shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
-                          <i className="fas fa-rotate"></i>
-                          Recalculate AI
-                        </button>
-                     </div>
-                   ) : (
-                     <div className="py-10 sm:py-14 text-center">
-                        <p className="text-base sm:text-lg text-slate-300 mb-8 sm:mb-12 font-bold max-w-xs mx-auto">Analyze {filteredSocialConcerns.length} social threads for operational patterns.</p>
-                        <button onClick={handleGenerateSummary} disabled={summaryLoading} className="w-full py-4 sm:py-6 bg-white text-[#0f172a] rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-[0.3em] shadow-2xl flex items-center justify-center gap-4 hover:scale-[1.05] disabled:opacity-50 transition-all duration-300">
-                          {summaryLoading ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-bolt-lightning text-amber-500"></i>}
-                          {summaryLoading ? '...' : 'Activate AI'}
-                        </button>
-                     </div>
-                   )}
-                 </div>
-              </aside>
-            </div>
+                        
+                        <div className="flex items-center gap-4 w-full md:w-auto">
+                          <div className="relative group w-full md:w-[350px]">
+                            <i className="fas fa-magnifying-glass absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#1a73e8] transition-colors z-10"></i>
+                            <input 
+                              type="text" 
+                              placeholder="Search threads..."
+                              className="w-full pl-16 pr-8 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-900 placeholder:text-slate-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                              value={socialSearchQuery}
+                              onChange={(e) => setSocialSearchQuery(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto overflow-y-auto max-h-[600px] no-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[800px]">
+                          <thead className="sticky top-0 z-20 bg-[#f8fafc] shadow-sm">
+                            <tr>
+                              <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">S#</th>
+                              <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mail Thread / Context</th>
+                              <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ticket Id</th>
+                              <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                              <th className="px-6 sm:px-10 py-4 sm:py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">TAT</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredSocialConcerns.map((c) => (
+                              <tr key={c.id} onClick={() => setSelectedSocialConcern(c)} className="group hover:bg-blue-50/40 cursor-pointer transition-all duration-300">
+                                <td className="px-6 sm:px-10 py-6 sm:py-10 text-center text-[11px] sm:text-[12px] font-black text-slate-300 group-hover:text-[#1a73e8]">{c['S no.']}</td>
+                                <td className="px-6 sm:px-10 py-6 sm:py-10 max-w-lg lg:max-w-2xl">
+                                  <div className="flex flex-col gap-3 sm:gap-4">
+                                    <h4 className="text-[14px] sm:text-[16px] font-black text-slate-800 line-clamp-2 group-hover:text-[#1a73e8] transition-colors">{c['Mail Thread']}</h4>
+                                    <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+                                        {renderBadge(c['BS/Activation'], 'bs')}
+                                        {renderBadge(c['Proxy'], 'proxy')}
+                                        <span className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-lg"><i className="fas fa-clock-rotate-left text-slate-300"></i> {c['Acknowledgement Date']}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 sm:px-10 py-6 sm:py-10 text-center"><span className="text-[10px] sm:text-[11px] font-mono font-black text-slate-600 bg-slate-50 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border border-slate-200/50 group-hover:bg-white">{c['Ticket Id'] || 'N/A'}</span></td>
+                                <td className="px-6 sm:px-10 py-6 sm:py-10 text-center">{renderBadge(c['Ticket Status'], 'status')}</td>
+                                <td className="px-6 sm:px-10 py-6 sm:py-10 text-center">
+                                  <div className={`text-[11px] sm:text-[12px] font-black inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-2xl shadow-sm border transition-all ${Number(c['TAT']) > 15 ? 'bg-rose-50 text-rose-600 border-rose-100 scale-110' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
+                                    {c['TAT'] || '0'}d
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <aside className="w-full xl:w-[400px] space-y-10 xl:sticky xl:top-28">
+                    <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] rounded-[2rem] sm:rounded-[3rem] p-8 sm:p-12 text-white shadow-2xl relative overflow-hidden group border border-white/5">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                      <h3 className="text-2xl font-black mb-3 sm:mb-4 flex items-center gap-4">
+                        <i className="fas fa-microchip text-blue-400"></i>
+                        AI Insights
+                      </h3>
+                      <p className="text-[9px] font-black uppercase tracking-[0.4em] text-blue-400 mb-8 sm:mb-10 border-b border-white/5 pb-4 sm:pb-6">Social Context Audit</p>
+                      {aiSummary ? (
+                        <div className="space-y-8 sm:space-y-10 animate-in fade-in duration-700">
+                            <div>
+                              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 sm:mb-4">Situational Overview</h4>
+                              <p className="text-sm sm:text-base leading-relaxed font-bold text-slate-200">{aiSummary.overview}</p>
+                            </div>
+                            <button onClick={handleGenerateSummary} className="w-full py-4 sm:py-5 bg-[#1a73e8] text-white rounded-[1.25rem] sm:rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.3em] shadow-xl hover:shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
+                              <i className="fas fa-rotate"></i>
+                              Recalculate AI
+                            </button>
+                        </div>
+                      ) : (
+                        <div className="py-10 sm:py-14 text-center">
+                            <p className="text-base sm:text-lg text-slate-300 mb-8 sm:mb-12 font-bold max-w-xs mx-auto">Analyze {filteredSocialConcerns.length} social threads for operational patterns.</p>
+                            <button onClick={handleGenerateSummary} disabled={summaryLoading} className="w-full py-4 sm:py-6 bg-white text-[#0f172a] rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-[0.3em] shadow-2xl flex items-center justify-center gap-4 hover:scale-[1.05] disabled:opacity-50 transition-all duration-300">
+                              {summaryLoading ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-bolt-lightning text-amber-500"></i>}
+                              {summaryLoading ? '...' : 'Activate AI'}
+                            </button>
+                        </div>
+                      )}
+                    </div>
+                  </aside>
+                </div>
+              </>
+            )}
           </div>
         ) : activeMainTab === 'Proxy' ? (
           <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
             {proxyLoading && proxyConcerns.length === 0 ? (
                <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
-                  <i className="fas fa-spinner animate-spin text-4xl mb-4"></i>
-                  <p className="text-xs font-black uppercase tracking-widest">Fetching Proxy Intelligence (GID 0)...</p>
+                  <i className="fas fa-spinner animate-spin text-4xl mb-4 text-[#6366f1]"></i>
+                  <p className="text-xs font-black uppercase tracking-widest animate-pulse">Fetching Proxy Intelligence (GID 0)...</p>
                </div>
+            ) : proxyError ? (
+              <div className="bg-white p-12 rounded-[2.5rem] border border-rose-100 shadow-xl shadow-rose-500/5 text-center">
+                <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+                  <i className="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3 className="text-xl font-black text-slate-800 mb-2">Proxy Sync Failed</h3>
+                <p className="text-slate-500 font-medium mb-8 max-w-md mx-auto">{proxyError}</p>
+                <button 
+                  onClick={loadProxyData}
+                  className="bg-[#6366f1] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-500/20"
+                >
+                  Reconnect to Intelligence
+                </button>
+              </div>
             ) : (
               <ProxyDashboard data={proxyConcerns} />
             )}
