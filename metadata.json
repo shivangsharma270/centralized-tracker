@@ -1,0 +1,5 @@
+{
+  "name": "ConcernTracker Dashboard",
+  "description": "An interactive dashboard for tracking concerns and issues directly from a Google Sheet source, featuring AI-powered summaries and real-time data visualization.",
+  "requestFramePermissions": []
+}
