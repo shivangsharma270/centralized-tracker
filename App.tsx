@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchSheetData, GIDS } from './utils/csvParser.ts';
-import { generateConcernSummary } from './services/geminiService.ts';
-import { Concern, ProxyConcern, LegalConcern, ImportantThread, AISummary, MainTabType, User } from './types.ts';
+import { HARDCODED_ASSOCIATES } from './associates.ts';
+import { Concern, ProxyConcern, LegalConcern, ImportantThread, MainTabType, User } from './types.ts';
 import StatCard from './components/StatCard.tsx';
 import ChartsSection from './components/ChartsSection.tsx';
 import ProxyDashboard from './components/ProxyDashboard.tsx';
@@ -29,17 +29,13 @@ const App: React.FC = () => {
   const [legalConcerns, setLegalConcerns] = useState<LegalConcern[]>([]);
   const [importantThreads, setImportantThreads] = useState<ImportantThread[]>([]);
   
-  const [socialLoading, setSocialLoading] = useState<boolean>(false);
-  const [proxyLoading, setProxyLoading] = useState<boolean>(false);
-  const [legalLoading, setLegalLoading] = useState<boolean>(false);
-  const [importantLoading, setImportantLoading] = useState<boolean>(false);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [proxyLoading, setProxyLoading] = useState(false);
+  const [legalLoading, setLegalLoading] = useState(false);
+  const [importantLoading, setImportantLoading] = useState(false);
   
   const [socialError, setSocialError] = useState<string | null>(null);
-  const [proxyError, setProxyError] = useState<string | null>(null);
-  const [legalError, setLegalError] = useState<string | null>(null);
-  const [importantError, setImportantError] = useState<string | null>(null);
-  
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [socialSearchQuery, setSocialSearchQuery] = useState('');
   const [activeSourceFilter, setActiveSourceFilter] = useState<'All' | 'Social Media' | 'Board' | 'Other'>('All');
   const [selectedSocialConcern, setSelectedSocialConcern] = useState<Concern | null>(null);
@@ -57,20 +53,17 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (currentUser) {
-      if (!currentUser.permissions.includes(activeMainTab)) {
-        setActiveMainTab(currentUser.permissions[0] || 'GlobalSummary');
-      }
+    if (currentUser && !currentUser.permissions.includes(activeMainTab)) {
+      setActiveMainTab(currentUser.permissions[0] || 'GlobalSummary');
     }
   }, [currentUser, activeMainTab]);
 
   useEffect(() => {
-    if (currentUser) {
-      loadAllData();
-    }
+    if (currentUser) loadAllData();
   }, [currentUser]);
 
   const handleLogin = (empId: string, pass: string) => {
+    // 1. Hardcoded Admin check
     if (empId === ADMIN_CREDENTIALS.empId && pass === ADMIN_CREDENTIALS.password) {
       const admin: User = {
         empId,
@@ -84,12 +77,20 @@ const App: React.FC = () => {
       return true;
     }
     
-    const associates: User[] = JSON.parse(localStorage.getItem('dashly_associates') || '[]');
-    const associate = associates.find(a => a.empId === empId && decode(a.passwordHash) === pass);
-    
-    if (associate) {
-      setCurrentUser(associate);
-      localStorage.setItem('dashly_session', JSON.stringify(associate));
+    // 2. Hardcoded Associates check (Persistence in App Code)
+    const hcMatch = HARDCODED_ASSOCIATES.find(a => a.empId === empId && decode(a.passwordHash) === pass);
+    if (hcMatch) {
+      setCurrentUser(hcMatch);
+      localStorage.setItem('dashly_session', JSON.stringify(hcMatch));
+      return true;
+    }
+
+    // 3. Local Browser Associates check
+    const localAssociates: User[] = JSON.parse(localStorage.getItem('dashly_associates') || '[]');
+    const localMatch = localAssociates.find(a => a.empId === empId && decode(a.passwordHash) === pass);
+    if (localMatch) {
+      setCurrentUser(localMatch);
+      localStorage.setItem('dashly_session', JSON.stringify(localMatch));
       return true;
     }
     
@@ -103,12 +104,7 @@ const App: React.FC = () => {
 
   const loadAllData = async () => {
     setRefreshing(true);
-    await Promise.all([
-      loadSocialData(),
-      loadProxyData(),
-      loadLegalData(),
-      loadImportantThreads()
-    ]);
+    await Promise.all([loadSocialData(), loadProxyData(), loadLegalData(), loadImportantThreads()]);
     setRefreshing(false);
   };
 
@@ -118,50 +114,32 @@ const App: React.FC = () => {
     try {
       const res = await fetchSheetData<Concern>(GIDS.SOCIAL_MEDIA);
       setSocialConcerns(res.data);
-    } catch (err: any) {
-      setSocialError(err.message || 'Failed to load social media data');
-    } finally {
-      setSocialLoading(false);
-    }
+    } catch (err: any) { setSocialError(err.message); }
+    finally { setSocialLoading(false); }
   };
 
   const loadProxyData = async () => {
     setProxyLoading(true);
-    setProxyError(null);
     try {
       const res = await fetchSheetData<ProxyConcern>(GIDS.PROXY_CASES);
       setProxyConcerns(res.data);
-    } catch (err: any) {
-      setProxyError(err.message || 'Failed to load proxy case data');
-    } finally {
-      setProxyLoading(false);
-    }
+    } catch (err) {} finally { setProxyLoading(false); }
   };
 
   const loadLegalData = async () => {
     setLegalLoading(true);
-    setLegalError(null);
     try {
       const res = await fetchSheetData<LegalConcern>(GIDS.LEGAL);
       setLegalConcerns(res.data);
-    } catch (err: any) {
-      setLegalError(err.message || 'Failed to load legal compliance data');
-    } finally {
-      setLegalLoading(false);
-    }
+    } catch (err) {} finally { setLegalLoading(false); }
   };
 
   const loadImportantThreads = async () => {
     setImportantLoading(true);
-    setImportantError(null);
     try {
       const res = await fetchSheetData<ImportantThread>(GIDS.IMPORTANT_THREADS);
       setImportantThreads(res.data);
-    } catch (err: any) {
-      setImportantError(err.message || 'Failed to load important threads');
-    } finally {
-      setImportantLoading(false);
-    }
+    } catch (err) {} finally { setImportantLoading(false); }
   };
 
   const handleSync = () => {
@@ -210,9 +188,7 @@ const App: React.FC = () => {
     return <span className={base + "bg-slate-100 text-slate-600"}>{value}</span>;
   };
 
-  if (!currentUser) {
-    return <Login onLogin={handleLogin} />;
-  }
+  if (!currentUser) return <Login onLogin={handleLogin} />;
 
   const allowedTabs = currentUser.permissions;
 
@@ -244,7 +220,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-3">
                 <button onClick={handleSync} disabled={refreshing} className="h-11 px-6 flex items-center justify-center gap-3 rounded-2xl bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all text-[11px] font-black uppercase tracking-widest">
                     <i className={`fas fa-sync-alt ${refreshing ? 'animate-spin' : ''}`}></i>
-                    <span>Refresh Data</span>
+                    <span>Refresh</span>
                 </button>
                 <button onClick={handleLogout} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-white transition-all">
                     <i className="fas fa-power-off"></i>
@@ -303,7 +279,7 @@ const App: React.FC = () => {
                  <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl"><i className="fas fa-exclamation-triangle"></i></div>
                  <h3 className="text-xl font-black text-slate-800 mb-2">Sync Interrupted</h3>
                  <p className="text-slate-500 font-medium mb-8 max-w-md mx-auto">{socialError}</p>
-                 <button onClick={loadSocialData} className="bg-[#1a73e8] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs">Reconnect Social Node</button>
+                 <button onClick={loadSocialData} className="bg-[#1a73e8] text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs">Reconnect</button>
                </div>
              ) : (
                <>
@@ -314,68 +290,32 @@ const App: React.FC = () => {
                         <StatCard label="Audit WIP" value={socialStats.wip} icon="fa-hourglass-half" color="bg-amber-500" />
                     </div>
                   </div>
-                  
                   <ChartsSection concerns={filteredSocialConcerns} activeTab={activeSourceFilter} setActiveTab={setActiveSourceFilter} />
-
+                  
                   <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-hidden mt-12">
                      <div className="px-10 py-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center bg-slate-50/40 gap-6">
                         <div>
-                          <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4">
-                            <span className="w-2.5 h-10 bg-[#1a73e8] rounded-full shadow-lg"></span>
-                            Social Audit Repository
-                          </h2>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 ml-7">Enterprise Social Monitoring Active</p>
+                          <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4"><span className="w-2.5 h-10 bg-[#1a73e8] rounded-full shadow-lg"></span>Social Audit Repository</h2>
                         </div>
-                        <div className="relative group w-full md:w-[400px]">
-                          <i className="fas fa-magnifying-glass absolute left-6 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                          <input 
-                            type="text" 
-                            placeholder="Search Mail Threads, Tickets..."
-                            className="w-full pl-16 pr-8 py-4 bg-white border border-slate-200 rounded-2xl text-[13px] font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all shadow-sm"
-                            value={socialSearchQuery}
-                            onChange={(e) => setSocialSearchQuery(e.target.value)}
-                          />
-                        </div>
+                        <input type="text" placeholder="Search Threads..." className="w-full md:w-[400px] pl-6 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-[13px] font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all shadow-sm" value={socialSearchQuery} onChange={e => setSocialSearchQuery(e.target.value)} />
                      </div>
-                     
                      <div className="overflow-x-auto max-h-[700px] no-scrollbar">
                         <table className="w-full text-left border-collapse min-w-[1200px]">
                           <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm">
                              <tr>
                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">S#</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mail Thread / Subject</th>
+                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mail Thread</th>
                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ticket</th>
                                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">TAT</th>
                              </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                             {filteredSocialConcerns.map((c) => (
+                             {filteredSocialConcerns.map(c => (
                                <tr key={c.id} onClick={() => setSelectedSocialConcern(c)} className="hover:bg-blue-50/30 cursor-pointer transition-all group">
                                   <td className="px-10 py-8 text-[11px] font-black text-slate-300 group-hover:text-blue-600">{c['S no.']}</td>
-                                  <td className="px-10 py-8 max-w-xl">
-                                     <div className="space-y-3">
-                                        <h4 className="text-[15px] font-black text-slate-800 line-clamp-2 leading-tight group-hover:text-blue-600">{c['Mail Thread']}</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                           {renderBadge(c['Source'], 'source')}
-                                           {renderBadge(c['BS/Activation'], 'bs')}
-                                           <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2 px-2.5 py-1 bg-slate-100 rounded-lg">
-                                             <i className="far fa-clock"></i> {c['Acknowledgement Date']}
-                                           </span>
-                                        </div>
-                                     </div>
-                                  </td>
-                                  <td className="px-10 py-8 text-center">
-                                     <span className="text-[11px] font-mono font-black text-slate-600 px-4 py-2 bg-slate-100 rounded-xl border border-slate-200">
-                                       {c['Ticket Id'] || 'N/A'}
-                                     </span>
-                                  </td>
+                                  <td className="px-10 py-8 max-w-xl"><h4 className="text-[15px] font-black text-slate-800 line-clamp-2 leading-tight group-hover:text-blue-600">{c['Mail Thread']}</h4></td>
+                                  <td className="px-10 py-8 text-center"><span className="text-[11px] font-mono font-black text-slate-600 px-4 py-2 bg-slate-100 rounded-xl border border-slate-200">{c['Ticket Id'] || 'N/A'}</span></td>
                                   <td className="px-10 py-8 text-center">{renderBadge(c['Ticket Status'], 'status')}</td>
-                                  <td className="px-10 py-8 text-center">
-                                     <div className={`w-12 h-12 inline-flex items-center justify-center rounded-2xl font-black text-[11px] shadow-sm border transition-all ${Number(c['TAT']) > 15 ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
-                                        {c['TAT'] || '0'}d
-                                     </div>
-                                  </td>
                                </tr>
                              ))}
                           </tbody>
@@ -392,38 +332,20 @@ const App: React.FC = () => {
         {activeMainTab === 'AdminPanel' && currentUser.role === 'admin' && <AdminPanel />}
       </main>
 
-      {/* Social Detail Modal */}
       {selectedSocialConcern && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col border border-slate-200">
-            <div className="px-10 py-8 bg-[#1a73e8] text-white relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+            <div className="px-10 py-8 bg-[#1a73e8] text-white">
               <div className="flex justify-between items-start mb-4">
-                 <span className="px-3 py-1 bg-white/20 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/10">ID: {selectedSocialConcern['Ticket Id'] || 'PENDING'}</span>
+                 <span className="px-3 py-1 bg-white/20 rounded-lg text-[10px] font-black uppercase border border-white/10">ID: {selectedSocialConcern['Ticket Id'] || 'PENDING'}</span>
                  <button onClick={() => setSelectedSocialConcern(null)} className="text-white/60 hover:text-white transition-colors"><i className="fas fa-times text-xl"></i></button>
               </div>
               <h3 className="text-2xl font-black leading-tight pr-10">{selectedSocialConcern['Mail Thread']}</h3>
             </div>
             <div className="p-10 space-y-8 bg-white max-h-[70vh] overflow-y-auto no-scrollbar">
-               <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Origin Context</label>
-                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">{renderBadge(selectedSocialConcern['Source'], 'source')}</div>
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Current State</label>
-                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">{renderBadge(selectedSocialConcern['Ticket Status'], 'status')}</div>
-                  </div>
+               <div className="p-8 bg-slate-50 rounded-[1.5rem] text-slate-700 font-bold italic border border-slate-100 shadow-inner">
+                 {selectedSocialConcern['Closing Comment'] || 'Final commentary pending.'}
                </div>
-               <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Resolution Findings</label>
-                  <div className="p-8 bg-slate-50 rounded-[1.5rem] text-slate-700 font-bold italic border border-slate-100 shadow-inner">
-                    {selectedSocialConcern['Closing Comment'] && selectedSocialConcern['Closing Comment'] !== '-' ? selectedSocialConcern['Closing Comment'] : 'Final audit commentary is currently pending synchronization.'}
-                  </div>
-               </div>
-            </div>
-            <div className="p-10 bg-slate-50 border-t border-slate-200 flex justify-end">
-               <button onClick={() => setSelectedSocialConcern(null)} className="w-full md:w-auto bg-slate-900 text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-black transition-all">Dismiss Audit View</button>
             </div>
           </div>
         </div>
