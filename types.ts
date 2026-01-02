@@ -8,7 +8,7 @@ export interface Concern {
   category: string;
   assignedTo: string;
   dateCreated: string;
-  [key: string]: any; // For flexible columns
+  [key: string]: any; 
 }
 
 export interface ProxyConcern {
@@ -40,16 +40,57 @@ export interface ProxyConcern {
   [key: string]: any;
 }
 
-export interface DashboardStats {
-  total: number;
-  open: number;
-  inProgress: number;
-  resolved: number;
-  highPriority: number;
+export interface LegalConcern {
+  id: string;
+  'Worked Date': string;
+  'HOD Name': string;
+  'Type': string;
+  'Intimation Date BS Conflict/PWIM Team': string;
+  'Reply By (Date) BS Conflict Team': string;
+  'TAT BS Conflilct': string;
+  'Subject': string;
+  'Thread Status': string;
+  [key: string]: any;
+}
+
+export interface ImportantThread {
+  id: string;
+  'S. No.': string;
+  'Threads Subject': string;
+  'Tasks to be done': string;
+  'Start Date': string;
+  'Team': string;
+  'Owner': string;
+  'Status': string;
+  'EDD - Closure': string;
+  'Remarks': string;
+  [key: string]: any;
 }
 
 export interface AISummary {
   overview: string;
   keyInsights: string[];
   recommendations: string[];
+}
+
+export interface GlobalSummary {
+  executiveSummary: string;
+  statusColor: 'green' | 'amber' | 'red';
+  departmentalDeepDive: {
+    social: string;
+    proxy: string;
+    legal: string;
+    important: string;
+  };
+  keyPriorities: string[];
+}
+
+export type MainTabType = 'GlobalSummary' | 'SocialMedia' | 'Proxy' | 'Legal' | 'Important' | 'AdminPanel';
+
+export interface User {
+  empId: string;
+  passwordHash: string;
+  name: string;
+  role: 'admin' | 'associate';
+  permissions: MainTabType[];
 }
